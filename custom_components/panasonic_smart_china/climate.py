@@ -40,6 +40,7 @@ from .models import (
     PLATFORM_CLIMATE,
 )
 from .profiles import find_profile_for_device_config
+from .token import DeviceTokenError, generate_device_token
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,7 +120,15 @@ class PanasonicBaseEntity(ClimateEntity):
         self._entry = entry
         self._usr_id = config[CONF_USR_ID]
         self._device_id = config[CONF_DEVICE_ID]
-        self._token = config[CONF_TOKEN]
+        try:
+            self._token = generate_device_token(self._device_id)
+        except DeviceTokenError as err:
+            _LOGGER.warning(
+                "Using stored token for %s because token regeneration failed: %s",
+                self._device_id,
+                err,
+            )
+            self._token = config[CONF_TOKEN]
         self._model = config.get(CONF_DEVICE_MODEL) or config.get(CONF_CONTROLLER_MODEL)
         self._api = client
         self._attr_name = name
@@ -159,7 +168,6 @@ class PanasonicBaseEntity(ClimateEntity):
             name=self._attr_name,
             manufacturer="Panasonic",
             model=self._model,
-            via_device=(DOMAIN, self._usr_id),
         )
 
     async def async_added_to_hass(self):
@@ -225,6 +233,7 @@ class PanasonicBaseEntity(ClimateEntity):
                 self._usr_id,
                 self._device_id,
                 self._token,
+                self._model,
             )
             self._last_params = res.copy()
             if update_internal_state:
@@ -238,7 +247,7 @@ class PanasonicBaseEntity(ClimateEntity):
         except PanasonicApiError as err:
             if update_internal_state:
                 self._available = False
-            _LOGGER.debug("Fetch status failed for %s: %s", self._device_id, err)
+            _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
             return None
 
     # --- 命令发送 ---
@@ -270,6 +279,7 @@ class PanasonicBaseEntity(ClimateEntity):
                 self._device_id,
                 self._token,
                 params,
+                self._model,
             )
         except PanasonicApiAuthError as err:
             self._available = False
@@ -506,7 +516,8 @@ class PanasonicBathroomHeaterEntity(PanasonicBaseEntity):
         return {"runningMode": 32}
 
     def _build_send_payload(self, changes, current_params):
-        """Build the fixed FV-RB20VL1 control payload."""
+        """Build the fixed FV-RB20VL1-compatible control payload."""
+        diy_next_step_no = 5 if self._model and self._model.upper() == "RB20VD1" else 2
         params = {
             "runningMode": 32,
             "warmTempset": 255,
@@ -514,12 +525,13 @@ class PanasonicBathroomHeaterEntity(PanasonicBaseEntity):
             "windKindSet": 255,
             "timeSet": 255,
             "lightSet": 255,
+            "gasCheckSet": 255,
             "DIYnextRunningMode": 255,
             "DIYnextWarmTempset": 255,
             "DIYnextwindDirectionSet": 255,
             "DIYnextwindKindSet": 255,
             "DIYnextTimeSet": 255,
-            "DIYnextStepNo": 2,
+            "DIYnextStepNo": diy_next_step_no,
         }
         params.update(changes)
         params["timeSet"] = 3 if params["runningMode"] in (37, 38) else 255

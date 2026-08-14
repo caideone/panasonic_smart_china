@@ -135,29 +135,42 @@ class PanasonicApiClient:
         usr_id: str,
         device_id: str,
         token: str,
+        device_model: str | None = None,
     ) -> dict[str, Any]:
         """Fetch the latest status for a supported device profile."""
         endpoint = profile.status_endpoint
+        identity_params = {
+            "usrId": usr_id,
+            "deviceId": device_id,
+            "token": token,
+        }
+        payload = {"id": endpoint.request_id, **identity_params}
+        if endpoint.wrap_request_params:
+            payload = {
+                "id": endpoint.request_id,
+                "params": identity_params,
+            }
+        elif endpoint.request_params is not None:
+            payload["params"] = dict(endpoint.request_params)
         res = await self._post(
             self._endpoint_url(endpoint),
-            {
-                "id": endpoint.request_id,
-                "usrId": usr_id,
-                "deviceId": device_id,
-                "token": token,
-            },
-            headers=self._control_headers(profile, device_id),
+            payload,
+            headers=self._control_headers(profile, device_id, device_model),
             require_results=endpoint.require_results,
             allow_non_json_response=endpoint.allow_non_json_response,
         )
 
         results = res.get("results") if endpoint.require_results else res.get("results", res)
         if not isinstance(results, dict):
-            raise PanasonicApiResponseError("Status response results must be an object")
+            raise PanasonicApiResponseError(
+                f"Status response results must be an object: {res}"
+            )
+        results = _select_status_results(results, endpoint.required_result_keys)
         missing_keys = endpoint.required_result_keys - results.keys()
         if missing_keys:
             raise PanasonicApiResponseError(
-                f"Status response did not include required keys: {sorted(missing_keys)}"
+                f"Status response did not include required keys: {sorted(missing_keys)}; "
+                f"response: {res}"
             )
         return results
 
@@ -168,6 +181,7 @@ class PanasonicApiClient:
         device_id: str,
         token: str,
         params: dict[str, Any],
+        device_model: str | None = None,
     ) -> dict[str, Any]:
         """Send status/control params for a supported device profile."""
         endpoint = profile.set_endpoint
@@ -180,7 +194,7 @@ class PanasonicApiClient:
                 "token": token,
                 "params": params,
             },
-            headers=self._control_headers(profile, device_id),
+            headers=self._control_headers(profile, device_id, device_model),
             require_results=endpoint.require_results,
             allow_non_json_response=endpoint.allow_non_json_response,
         )
@@ -267,6 +281,7 @@ class PanasonicApiClient:
         self,
         profile: PanasonicProfile | None = None,
         device_id: str | None = None,
+        device_model: str | None = None,
     ) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
@@ -279,11 +294,45 @@ class PanasonicApiClient:
         if profile and profile.cookie_required and self.ssid:
             headers["Cookie"] = f"SSID={self.ssid}"
         if profile and profile.referer_template:
+            referer_dev_type = _referer_dev_type(profile, device_model)
             headers["Referer"] = profile.referer_template.format(
                 device_id=device_id or "",
                 controller_model=profile.controller_model,
+                referer_dev_type=referer_dev_type,
+                referer_model_path=_referer_model_path(referer_dev_type),
                 profile_id=profile.profile_id,
             )
         if profile:
             headers.update(profile.extra_control_headers)
         return headers
+
+
+def _select_status_results(
+    results: dict[str, Any],
+    required_keys: frozenset[str],
+) -> dict[str, Any]:
+    """Return the object containing status fields from common Panasonic wrappers."""
+    if not required_keys or required_keys <= results.keys():
+        return results
+
+    for key in ("params", "statusInfo", "status", "data"):
+        nested = results.get(key)
+        if isinstance(nested, dict) and required_keys <= nested.keys():
+            return nested
+
+    return results
+
+
+def _referer_dev_type(profile: PanasonicProfile, device_model: str | None) -> str:
+    """Return the model value to present to Panasonic's web control page."""
+    model = (device_model or "").strip()
+    if model and model.upper() not in {"AIRCLE-05-02"}:
+        return model
+    return profile.controller_model
+
+
+def _referer_model_path(dev_type: str) -> str:
+    """Return the path segment used by Panasonic's web control page."""
+    if dev_type.upper().startswith("FV-"):
+        return dev_type[3:]
+    return dev_type

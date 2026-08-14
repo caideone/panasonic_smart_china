@@ -1,4 +1,4 @@
-"""Verified profile for Panasonic FV-RB20VL1 bathroom heater devices."""
+"""Profile for Panasonic 0820 bathroom heater devices compatible with FV-RB20VL1."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from homeassistant.components.climate.const import HVACMode
 
 from ..models import (
     ENTITY_KIND_BATHROOM_HEATER,
-    PLATFORM_CLIMATE,
+    PLATFORM_SELECT,
     PROTOCOL_BATHROOM_HEATER,
     PanasonicEndpoint,
     PanasonicProfile,
@@ -23,17 +23,18 @@ HVAC_MAPPING = {
 BATHROOM_HEATER_0820_FV_RB20VL1_PROFILE = PanasonicProfile(
     profile_id="bathroom_heater_0820_fv_rb20vl1",
     controller_model="FV-RB20VL1",
-    name="松下风暖浴霸 (FV-RB20VL1)",
+    name="松下风暖浴霸 (FV-RB20VL1/RB20VD1)",
     category_ids=frozenset({"0820"}),
-    model_ids=frozenset({"FV-RB20VL1", "Aircle-05-02"}),
-    ha_platforms=(PLATFORM_CLIMATE,),
+    model_ids=frozenset({"FV-RB20VL1", "RB20VD1", "Aircle-05-02", "Aircle-05-03"}),
+    ha_platforms=(PLATFORM_SELECT,),
     entity_kind=ENTITY_KIND_BATHROOM_HEATER,
     protocol=PROTOCOL_BATHROOM_HEATER,
     status_endpoint=PanasonicEndpoint(
-        path="ACDevGetStatusInfoAW",
-        request_id=100,
-        require_results=True,
+        path="ADevGetStatusInfoFV54BA1C",
+        request_id=52,
+        require_results=False,
         required_result_keys=frozenset({"runningMode"}),
+        request_params={},
     ),
     set_endpoint=PanasonicEndpoint(
         path="ADevSetStatusInfoFV54BA1C",
@@ -45,7 +46,7 @@ BATHROOM_HEATER_0820_FV_RB20VL1_PROFILE = PanasonicProfile(
     hvac_mapping=HVAC_MAPPING,
     cookie_required=True,
     referer_template=(
-        "https://app.psmartcloud.com/ca/cn/0820/RB20VL1/index.html"
-        "?deviceId={device_id}&devType=FV-RB20VL1"
+        "https://app.psmartcloud.com/ca/cn/0820/{referer_model_path}/index.html"
+        "?deviceId={device_id}&devType={referer_dev_type}"
     ),
 )

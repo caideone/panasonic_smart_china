@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 PLATFORM_CLIMATE = "climate"
+PLATFORM_SELECT = "select"
 
 ENTITY_KIND_DUCTED_AC = "ducted_ac"
 ENTITY_KIND_BATHROOM_HEATER = "bathroom_heater"
@@ -25,6 +26,8 @@ class PanasonicEndpoint:
     require_results: bool
     required_result_keys: frozenset[str] = frozenset()
     allow_non_json_response: bool = False
+    wrap_request_params: bool = False
+    request_params: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
