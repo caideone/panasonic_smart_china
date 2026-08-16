@@ -534,7 +534,6 @@ class PanasonicBathroomHeaterEntity(PanasonicBaseEntity):
             "DIYnextStepNo": diy_next_step_no,
         }
         params.update(changes)
-        params["timeSet"] = 3 if params["runningMode"] in (37, 38) else 255
         return params
 
 
