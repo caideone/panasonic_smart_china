@@ -43,6 +43,7 @@ from .profiles import find_profile_for_device_config
 from .token import DeviceTokenError, generate_device_token
 
 _LOGGER = logging.getLogger(__name__)
+DIY_NEXT_STEP_5_MODELS = {"RB20VD1", "TB30KL1"}
 
 # === 轮询频率 ===
 POLLING_INTERVAL = timedelta(seconds=15)
@@ -517,7 +518,9 @@ class PanasonicBathroomHeaterEntity(PanasonicBaseEntity):
 
     def _build_send_payload(self, changes, current_params):
         """Build the fixed FV-RB20VL1-compatible control payload."""
-        diy_next_step_no = 5 if self._model and self._model.upper() == "RB20VD1" else 2
+        diy_next_step_no = (
+            5 if self._model and self._model.upper() in DIY_NEXT_STEP_5_MODELS else 2
+        )
         params = {
             "runningMode": 32,
             "warmTempset": 255,

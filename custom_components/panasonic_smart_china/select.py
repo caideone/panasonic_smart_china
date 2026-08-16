@@ -99,6 +99,7 @@ TIMER_BY_OPTION = {
 OPTION_BY_TIMER = {value: key for key, value in TIMER_BY_OPTION.items()}
 DEFAULT_TIMER_VALUE = TIMER_BY_OPTION[OPTION_TIMER_30_MIN]
 LAST_TIMER_BY_DEVICE: dict[str, int] = {}
+DIY_NEXT_STEP_5_MODELS = {"RB20VD1", "TB30KL1"}
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -442,7 +443,7 @@ class PanasonicBathroomHeaterTimerSelect(SelectEntity):
 
 
 def _build_bathroom_heater_payload(model, changes):
-    diy_next_step_no = 5 if model and model.upper() == "RB20VD1" else 2
+    diy_next_step_no = 5 if model and model.upper() in DIY_NEXT_STEP_5_MODELS else 2
     params = {
         "runningMode": 32,
         "warmTempset": 255,

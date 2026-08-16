@@ -1,12 +1,12 @@
 # Panasonic Smart China for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![version](https://img.shields.io/badge/version-2.5.0-blue.svg)]()
+[![version](https://img.shields.io/badge/version-2.5.1-blue.svg)]()
 [![license](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 这是一个用于 Home Assistant 的松下中国区智能家电自定义集成，目标是逐步维护成面向“松下智能家电”中国区设备的核心 HA 集成仓库。
 
-项目当前基于对“松下智能家电”App 通信逻辑的分析实现，非松下官方项目。目前已支持品类代号 `0900` 的松下风管机/中央空调线控设备，以及品类代号 `0820` 的 `FV-RB20VL1` / `RB20VD1` 风暖浴霸。代码内部采用 profile 驱动模型，后续会通过独立 profile、协议端点和 HA entity adapter 扩展更多品类和设备型号。
+项目当前基于对“松下智能家电”App 通信逻辑的分析实现，非松下官方项目。目前已支持品类代号 `0900` 的松下风管机/中央空调线控设备，以及品类代号 `0820` 的 `FV-RB20VL1` / `RB20VD1` / `TB30KL1` 风暖浴霸。代码内部采用 profile 驱动模型，后续会通过独立 profile、协议端点和 HA entity adapter 扩展更多品类和设备型号。
 
 > 💡 特别致谢：登陆算法由arthurfsy和不知名的逆向大佬提供。
 
@@ -19,7 +19,7 @@
 - 在 HA 中以松下账号为配置入口。
 - 登录后自动扫描账号下可识别的设备。
 - 每个设备会在同一账号配置项下创建对应实体。
-- 当前已注册 `0900` 风管机和 `0820` `FV-RB20VL1` / `RB20VD1` 风暖浴霸 profile。
+- 当前已注册 `0900` 风管机和 `0820` `FV-RB20VL1` / `RB20VD1` / `TB30KL1` 风暖浴霸 profile。
 - profile 可以声明品类代号、型号匹配、HA 平台、实体 adapter、状态读取接口、控制接口和安全写入字段。
 - 初始化流程只允许选择已支持设备，并会列出因 category 或具体型号不受支持而被过滤的设备。
 - 设备信息会透出设备名称、厂商和型号，便于在 HA 设备页识别。
@@ -46,7 +46,7 @@
 - 多家庭账号：登录后如账号下存在多个家庭，可选择要添加到 HA 的家庭，多个家庭可分别添加。
 - Read-Modify-Write 控制：发送控制指令前先读取设备当前状态，再只修改必要字段，降低覆盖设备真实状态的风险。
 - 0900 风管机控制：支持开关机、制冷、制热、除湿、自动模式、目标温度和风速控制。
-- FV-RB20VL1 / RB20VD1 风暖浴霸控制：支持待机、取暖、换气、凉干燥、热干燥模式，关闭、暖光、冷光灯光选择，以及连续、15分钟、30分钟、1小时、3小时、6小时定时选择。
+- FV-RB20VL1 / RB20VD1 / TB30KL1 风暖浴霸控制：支持待机、取暖、换气、凉干燥、热干燥模式，关闭、暖光、冷光灯光选择，以及连续、15分钟、30分钟、1小时、3小时、6小时定时选择。
 - 静音风速映射：将松下协议中的静音开关映射为 HA 中的 `Quiet` 风速。
 - 外部温度传感器：可为 climate 实体绑定 HA 中的温度传感器，用于显示更准确的室内温度。
 - 本地品牌图：包含 HA 自定义集成可加载的本地 `brand/icon.png` 和 `brand/logo.png`。
@@ -56,7 +56,7 @@
 | 品类代号 | 设备类型 | 当前 profile | 说明 |
 | --- | --- | --- | --- |
 | `0900` | 风管机/中央空调 | `ducted_ac_0900` | 以 `CZ-RD501DW2` 线控器逻辑验证 |
-| `0820` | 风暖浴霸 | `bathroom_heater_0820_fv_rb20vl1` | 支持型号 `FV-RB20VL1`，兼容型号 `RB20VD1` 待实机验证；设备 ID 后缀可能显示为 `Aircle-05-02` 或 `Aircle-05-03` |
+| `0820` | 风暖浴霸 | `bathroom_heater_0820_fv_rb20vl1` | 支持型号 `FV-RB20VL1`，兼容型号 `RB20VD1` / `TB30KL1` 待实机验证；设备 ID 后缀可能显示为 `Aircle-05-02` 或 `Aircle-05-03` |
 
 其他品类和型号暂未声明支持。即使能在扫描中识别出来，也需要补充 profile/adapter 并完成真实设备验证后再开放。
 
@@ -118,7 +118,7 @@
 
 ### 风暖浴霸
 
-`FV-RB20VL1` 在 HA 中映射为 climate 实体，支持取暖、换气、凉干燥、热干燥和待机模式。
+风暖浴霸在 HA 中映射为 select 实体，支持模式、灯光和定时选择。
 
 仪表盘配置示例见 [风暖浴霸仪表盘卡片](guides/风暖浴霸仪表盘卡片.md)。
 
