@@ -9,6 +9,13 @@
           "password": "密码"
         }
       },
+      "family": {
+        "title": "选择家庭",
+        "description": "请选择要添加到 Home Assistant 的松下家庭。多个家庭可以分别再次添加。",
+        "data": {
+          "familyId": "家庭"
+        }
+      },
       "devices": {
         "title": "选择设备",
         "description": "请选择要在 Home Assistant 中启用的松下设备。只有已注册 profile 且已映射到 HA 平台的设备可以添加。\n\n本次扫描中未支持的设备：\n{unsupported_devices}",
@@ -26,6 +33,7 @@
     },
     "error": {
       "cannot_connect": "登录失败：请检查账号密码或网络连接",
+      "invalid_family": "请选择有效的家庭",
       "no_devices_selected": "请至少选择一个设备"
     },
     "abort": {

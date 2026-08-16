@@ -1,7 +1,7 @@
 # Panasonic Smart China for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![version](https://img.shields.io/badge/version-2.4.1-blue.svg)]()
+[![version](https://img.shields.io/badge/version-2.5.0-blue.svg)]()
 [![license](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 这是一个用于 Home Assistant 的松下中国区智能家电自定义集成，目标是逐步维护成面向“松下智能家电”中国区设备的核心 HA 集成仓库。
@@ -43,6 +43,7 @@
 - 账号级配置：一次登录账号，扫描并挂载账号下的可支持设备。
 - 自动获取控制 token：内置松下设备控制所需的签名和 token 计算逻辑。
 - 单点登录提醒：松下账号存在单点登录限制，如果手机 App 重新登录导致 HA 会话失效，集成会触发重新认证提醒。
+- 多家庭账号：登录后如账号下存在多个家庭，可选择要添加到 HA 的家庭，多个家庭可分别添加。
 - Read-Modify-Write 控制：发送控制指令前先读取设备当前状态，再只修改必要字段，降低覆盖设备真实状态的风险。
 - 0900 风管机控制：支持开关机、制冷、制热、除湿、自动模式、目标温度和风速控制。
 - FV-RB20VL1 / RB20VD1 风暖浴霸控制：支持待机、取暖、换气、凉干燥、热干燥模式，关闭、暖光、冷光灯光选择，以及连续、15分钟、30分钟、1小时、3小时、6小时定时选择。

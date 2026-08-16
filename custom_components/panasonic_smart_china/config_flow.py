@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import voluptuous as vol
 
-from homeassistant import config_entries
+from homeassistant import config_entries, data_entry_flow
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
@@ -18,7 +18,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
-from .api import PanasonicApiAuthError, PanasonicApiClient, PanasonicApiError
+from .api import FamilyInfo, PanasonicApiAuthError, PanasonicApiClient, PanasonicApiError
 from .const import (
     CONF_CATEGORY,
     CONF_CONTROLLER_MODEL,
@@ -29,6 +29,7 @@ from .const import (
     CONF_ENABLED,
     CONF_ENTITY_KIND,
     CONF_FAMILY_ID,
+    CONF_FAMILY_NAME,
     CONF_HA_PLATFORMS,
     CONF_PROFILE_ID,
     CONF_REAL_FAMILY_ID,
@@ -68,6 +69,8 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._ssid: str | None = None
         self._family_id: str | None = None
         self._real_family_id: str | None = None
+        self._family_name: str | None = None
+        self._families: tuple[FamilyInfo, ...] = ()
         self._devices: dict[str, dict[str, Any]] = {}
         self._device_support_map: dict[str, dict[str, Any]] = {}
 
@@ -85,21 +88,22 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Login failed: %s", err)
                 errors["base"] = "cannot_connect"
             else:
-                if not login.devices:
-                    return self.async_abort(reason="no_devices_found")
-
                 self._username = user_input[CONF_USERNAME]
                 self._usr_id = login.usr_id
                 self._ssid = login.ssid
                 self._family_id = login.family_id
                 self._real_family_id = login.real_family_id
+                self._family_name = login.family_name
+                self._families = login.families
+
+                if len(self._families) > 1:
+                    return await self.async_step_family()
+
+                if not login.devices:
+                    return self.async_abort(reason="no_devices_found")
+
                 self._devices = login.devices
-                self._analyze_device_support()
-
-                await self.async_set_unique_id(login.usr_id)
-                self._abort_if_unique_id_configured()
-
-                return await self.async_step_devices()
+                return await self._finish_family_setup()
 
         return self.async_show_form(
             step_id="user",
@@ -107,6 +111,58 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_USERNAME): str,
                     vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_family(self, user_input=None):
+        """Select the Panasonic family/home to configure."""
+        errors = {}
+
+        if user_input is not None:
+            selected_family = self._family_by_key(user_input[CONF_FAMILY_ID])
+            if selected_family is None:
+                errors["base"] = "invalid_family"
+            else:
+                self._family_id = selected_family.family_id
+                self._real_family_id = selected_family.real_family_id
+                self._family_name = selected_family.name
+                try:
+                    self._devices = await PanasonicApiClient(
+                        self.hass,
+                        self._ssid,
+                    ).get_devices(
+                        self._usr_id,
+                        self._family_id,
+                        self._real_family_id,
+                    )
+                except PanasonicApiError as err:
+                    _LOGGER.error("Fetch devices failed for family %s: %s", self._family_id, err)
+                    errors["base"] = "cannot_connect"
+                else:
+                    if not self._devices:
+                        return self.async_abort(reason="no_devices_found")
+                    return await self._finish_family_setup()
+
+        options = [
+            {
+                "value": _family_key(family),
+                "label": _format_family_label(family),
+            }
+            for family in self._families
+        ]
+
+        return self.async_show_form(
+            step_id="family",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_FAMILY_ID): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                 }
             ),
             errors=errors,
@@ -136,13 +192,14 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "no_devices_selected"
                 else:
                     return self.async_create_entry(
-                        title=f"松下账号 ({self._username})",
+                        title=_format_entry_title(self._username, self._family_name),
                         data={
                             CONF_USERNAME: self._username,
                             CONF_USR_ID: self._usr_id,
                             CONF_SSID: self._ssid,
                             CONF_FAMILY_ID: self._family_id,
                             CONF_REAL_FAMILY_ID: self._real_family_id,
+                            CONF_FAMILY_NAME: self._family_name,
                             CONF_DEVICES: configured_devices,
                         },
                     )
@@ -181,6 +238,27 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
+    async def _finish_family_setup(self):
+        self._analyze_device_support()
+        await self.async_set_unique_id(_entry_unique_id(self._usr_id, self._family_id))
+        self._abort_if_account_family_configured()
+        return await self.async_step_devices()
+
+    def _abort_if_account_family_configured(self) -> None:
+        for entry in self._async_current_entries():
+            if (
+                entry.data.get(CONF_USR_ID) == self._usr_id
+                and entry.data.get(CONF_FAMILY_ID) == self._family_id
+            ):
+                raise data_entry_flow.AbortFlow("already_configured")
+        self._abort_if_unique_id_configured()
+
+    def _family_by_key(self, key: str) -> FamilyInfo | None:
+        for family in self._families:
+            if _family_key(family) == key:
+                return family
+        return None
+
     async def async_step_reauth(self, entry_data: Mapping[str, Any]):
         """Start reauthentication for an existing account entry."""
         self._username = entry_data.get(CONF_USERNAME)
@@ -203,10 +281,21 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 reauth_entry = self._get_reauth_entry()
                 new_data = dict(reauth_entry.data)
+                family = _find_matching_family(
+                    login.families,
+                    new_data.get(CONF_FAMILY_ID),
+                    new_data.get(CONF_REAL_FAMILY_ID),
+                )
                 new_data[CONF_USR_ID] = login.usr_id
                 new_data[CONF_SSID] = login.ssid
-                new_data[CONF_FAMILY_ID] = login.family_id
-                new_data[CONF_REAL_FAMILY_ID] = login.real_family_id
+                if family:
+                    new_data[CONF_FAMILY_ID] = family.family_id
+                    new_data[CONF_REAL_FAMILY_ID] = family.real_family_id
+                    new_data[CONF_FAMILY_NAME] = family.name
+                else:
+                    new_data.setdefault(CONF_FAMILY_ID, login.family_id)
+                    new_data.setdefault(CONF_REAL_FAMILY_ID, login.real_family_id)
+                    new_data.setdefault(CONF_FAMILY_NAME, login.family_name)
                 return self.async_update_reload_and_abort(reauth_entry, data=new_data)
 
         return self.async_show_form(
@@ -532,3 +621,40 @@ def _format_device_label(name: str, model: str | None, device_id: str | None = N
     if device_id:
         return f"{name} ({device_id})"
     return name
+
+
+def _family_key(family: FamilyInfo) -> str:
+    return f"{family.family_id}|{family.real_family_id}"
+
+
+def _format_family_label(family: FamilyInfo) -> str:
+    if family.name:
+        return family.name
+    return f"家庭 {family.family_id}"
+
+
+def _entry_unique_id(usr_id: str | None, family_id: str | None) -> str:
+    if family_id:
+        return f"{usr_id}_{family_id}"
+    return str(usr_id)
+
+
+def _format_entry_title(username: str | None, family_name: str | None) -> str:
+    title = f"松下账号 ({username})"
+    if family_name:
+        return f"{title} - {family_name}"
+    return title
+
+
+def _find_matching_family(
+    families: tuple[FamilyInfo, ...],
+    family_id: str | None,
+    real_family_id: str | None,
+) -> FamilyInfo | None:
+    for family in families:
+        if family.family_id == family_id and family.real_family_id == real_family_id:
+            return family
+    for family in families:
+        if family.family_id == family_id:
+            return family
+    return None

@@ -34,6 +34,15 @@ class PanasonicApiResponseError(PanasonicApiError):
 
 
 @dataclass(frozen=True)
+class FamilyInfo:
+    """Panasonic account family/home information."""
+
+    family_id: str
+    real_family_id: str
+    name: str | None = None
+
+
+@dataclass(frozen=True)
 class LoginResult:
     """Successful login result."""
 
@@ -41,6 +50,8 @@ class LoginResult:
     ssid: str
     family_id: str
     real_family_id: str
+    family_name: str | None
+    families: tuple[FamilyInfo, ...]
     devices: dict[str, dict[str, Any]]
 
 
@@ -91,6 +102,8 @@ class PanasonicApiClient:
         ssid = results["ssId"]
         family_id = results["familyId"]
         real_family_id = results["realFamilyId"]
+        families = _extract_family_infos(results, family_id, real_family_id)
+        family_name = _family_name_for(families, family_id, real_family_id)
 
         self.ssid = ssid
         devices = await self.get_devices(usr_id, family_id, real_family_id)
@@ -99,6 +112,8 @@ class PanasonicApiClient:
             ssid=ssid,
             family_id=family_id,
             real_family_id=real_family_id,
+            family_name=family_name,
+            families=families,
             devices=devices,
         )
 
@@ -321,6 +336,81 @@ def _select_status_results(
             return nested
 
     return results
+
+
+def _extract_family_infos(
+    results: dict[str, Any],
+    default_family_id: str,
+    default_real_family_id: str,
+) -> tuple[FamilyInfo, ...]:
+    """Extract family list from known and nested Panasonic login response shapes."""
+    families: list[FamilyInfo] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_family(candidate: dict[str, Any]) -> None:
+        family_id = candidate.get("familyId") or candidate.get("id")
+        real_family_id = candidate.get("realFamilyId") or candidate.get("realId")
+        if not family_id or not real_family_id:
+            return
+
+        key = (str(family_id), str(real_family_id))
+        if key in seen:
+            return
+
+        seen.add(key)
+        name = (
+            candidate.get("familyName")
+            or candidate.get("name")
+            or candidate.get("homeName")
+            or candidate.get("houseName")
+        )
+        families.append(
+            FamilyInfo(
+                family_id=str(family_id),
+                real_family_id=str(real_family_id),
+                name=str(name) if name else None,
+            )
+        )
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            add_family(value)
+            for nested in value.values():
+                walk(nested)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    for key in (
+        "familyList",
+        "families",
+        "realFamilyList",
+        "usrFamilyList",
+        "homeList",
+        "houseList",
+    ):
+        walk(results.get(key))
+
+    add_family(results)
+    if not families:
+        families.append(
+            FamilyInfo(
+                family_id=str(default_family_id),
+                real_family_id=str(default_real_family_id),
+            )
+        )
+    return tuple(families)
+
+
+def _family_name_for(
+    families: tuple[FamilyInfo, ...],
+    family_id: str,
+    real_family_id: str,
+) -> str | None:
+    for family in families:
+        if family.family_id == family_id and family.real_family_id == real_family_id:
+            return family.name
+    return None
 
 
 def _referer_dev_type(profile: PanasonicProfile, device_model: str | None) -> str:
