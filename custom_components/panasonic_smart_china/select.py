@@ -99,7 +99,7 @@ TIMER_BY_OPTION = {
 OPTION_BY_TIMER = {value: key for key, value in TIMER_BY_OPTION.items()}
 DEFAULT_TIMER_VALUE = TIMER_BY_OPTION[OPTION_TIMER_30_MIN]
 LAST_TIMER_BY_DEVICE: dict[str, int] = {}
-DIY_NEXT_STEP_5_MODELS = {"RB20VD1", "TB30KL1"}
+DIY_NEXT_STEP_5_MODELS = {"RB20VD1"}
 
 
 async def async_setup_entry(hass, entry, async_add_entities):

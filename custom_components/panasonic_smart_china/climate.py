@@ -43,7 +43,7 @@ from .profiles import find_profile_for_device_config
 from .token import DeviceTokenError, generate_device_token
 
 _LOGGER = logging.getLogger(__name__)
-DIY_NEXT_STEP_5_MODELS = {"RB20VD1", "TB30KL1"}
+DIY_NEXT_STEP_5_MODELS = {"RB20VD1"}
 
 # === 轮询频率 ===
 POLLING_INTERVAL = timedelta(seconds=15)
