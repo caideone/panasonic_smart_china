@@ -100,6 +100,7 @@ OPTION_BY_TIMER = {value: key for key, value in TIMER_BY_OPTION.items()}
 DEFAULT_TIMER_VALUE = TIMER_BY_OPTION[OPTION_TIMER_30_MIN]
 LAST_TIMER_BY_DEVICE: dict[str, int] = {}
 DIY_NEXT_STEP_5_MODELS = {"RB20VD1"}
+TIMER_BEFORE_MODE_MODELS = {"TB30KL1"}
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -204,17 +205,48 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
             return
 
         running_mode = MODE_BY_OPTION[option]
+        timer = LAST_TIMER_BY_DEVICE.get(
+            self._device_id,
+            DEFAULT_TIMER_VALUE,
+        )
         changes = {"runningMode": running_mode}
         if running_mode != 32:
-            changes["timeSet"] = LAST_TIMER_BY_DEVICE.get(
-                self._device_id,
-                DEFAULT_TIMER_VALUE,
-            )
+            changes["timeSet"] = timer
         params = _build_bathroom_heater_payload(self._model, changes)
         self._attr_current_option = option
         self._attr_available = True
         self.async_write_ha_state()
         try:
+            if running_mode != 32 and _model_upper(self._model) in TIMER_BEFORE_MODE_MODELS:
+                status = await self._api.get_device_status(
+                    self._profile,
+                    self._usr_id,
+                    self._device_id,
+                    self._token,
+                    self._model,
+                )
+                current_mode = _writable_running_mode(
+                    _as_int(status.get("runningMode"), 32)
+                )
+                await self._api.set_device_status(
+                    self._profile,
+                    self._usr_id,
+                    self._device_id,
+                    self._token,
+                    _build_bathroom_heater_payload(
+                        self._model,
+                        {
+                            "runningMode": current_mode,
+                            "timeSet": timer,
+                        },
+                    ),
+                    self._model,
+                )
+                params = _build_bathroom_heater_payload(
+                    self._model,
+                    {"runningMode": running_mode},
+                )
+
             await self._api.set_device_status(
                 self._profile,
                 self._usr_id,
@@ -443,7 +475,7 @@ class PanasonicBathroomHeaterTimerSelect(SelectEntity):
 
 
 def _build_bathroom_heater_payload(model, changes):
-    diy_next_step_no = 5 if model and model.upper() in DIY_NEXT_STEP_5_MODELS else 2
+    diy_next_step_no = 5 if _model_upper(model) in DIY_NEXT_STEP_5_MODELS else 2
     params = {
         "runningMode": 32,
         "warmTempset": 255,
@@ -461,6 +493,10 @@ def _build_bathroom_heater_payload(model, changes):
     }
     params.update(changes)
     return params
+
+
+def _model_upper(model):
+    return model.upper() if model else ""
 
 
 def _writable_running_mode(mode):
