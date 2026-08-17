@@ -1,7 +1,7 @@
 # Panasonic Smart China for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![version](https://img.shields.io/badge/version-2.5.5-blue.svg)]()
+[![version](https://img.shields.io/badge/version-2.5.7-blue.svg)]()
 [![license](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 这是一个用于 Home Assistant 的松下中国区智能家电自定义集成，目标是逐步维护成面向“松下智能家电”中国区设备的核心 HA 集成仓库。
@@ -56,7 +56,8 @@
 | 品类代号 | 设备类型 | 当前 profile | 说明 |
 | --- | --- | --- | --- |
 | `0900` | 风管机/中央空调 | `ducted_ac_0900` | 以 `CZ-RD501DW2` 线控器逻辑验证 |
-| `0820` | 风暖浴霸 | `bathroom_heater_0820_fv_rb20vl1` | 支持型号 `FV-RB20VL1`，兼容型号 `RB20VD1` / `TB30KL1` 待实机验证；设备 ID 后缀可能显示为 `Aircle-05-02` 或 `Aircle-05-03` |
+| `0820` | 风暖浴霸 | `bathroom_heater_0820_fv_rb20vl1` | 支持型号 `FV-RB20VL1` / `RB20VD1`；设备 ID 后缀可能显示为 `Aircle-05-02` 或 `Aircle-05-03` |
+| `0820` | 风暖浴霸 | `bathroom_heater_0820_tb30kl1` | 支持型号 `TB30KL1`；换气、待机、照明和定时为独立映射 |
 
 其他品类和型号暂未声明支持。即使能在扫描中识别出来，也需要补充 profile/adapter 并完成真实设备验证后再开放。
 

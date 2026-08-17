@@ -1,4 +1,4 @@
-"""Profile for Panasonic 0820 bathroom heater devices compatible with FV-RB20VL1."""
+"""Profile for Panasonic 0820 TB30KL1 bathroom heater devices."""
 
 from __future__ import annotations
 
@@ -12,22 +12,19 @@ from ..models import (
     PanasonicProfile,
 )
 
-HVAC_MAPPING = {
-    HVACMode.OFF: 32,
-    HVACMode.HEAT: 37,
-    HVACMode.FAN_ONLY: 38,
-    HVACMode.COOL: 40,
-    HVACMode.DRY: 42,
+TB30KL1_PROFILE_ID = "bathroom_heater_0820_tb30kl1"
+
+TB30KL1_HVAC_MAPPING = {
+    HVACMode.OFF: 0,
+    HVACMode.FAN_ONLY: 6,
 }
 
-BATHROOM_HEATER_0820_FV_RB20VL1_PROFILE = PanasonicProfile(
-    profile_id="bathroom_heater_0820_fv_rb20vl1",
-    controller_model="FV-RB20VL1",
-    name="松下风暖浴霸 (FV-RB20VL1/RB20VD1)",
+BATHROOM_HEATER_0820_TB30KL1_PROFILE = PanasonicProfile(
+    profile_id=TB30KL1_PROFILE_ID,
+    controller_model="TB30KL1",
+    name="松下风暖浴霸 (TB30KL1)",
     category_ids=frozenset({"0820"}),
-    model_ids=frozenset(
-        {"FV-RB20VL1", "RB20VD1", "Aircle-05-02", "Aircle-05-03"}
-    ),
+    model_ids=frozenset({"TB30KL1"}),
     ha_platforms=(PLATFORM_SELECT,),
     entity_kind=ENTITY_KIND_BATHROOM_HEATER,
     protocol=PROTOCOL_BATHROOM_HEATER,
@@ -45,7 +42,7 @@ BATHROOM_HEATER_0820_FV_RB20VL1_PROFILE = PanasonicProfile(
         allow_non_json_response=True,
     ),
     default_hvac_mode=HVACMode.FAN_ONLY,
-    hvac_mapping=HVAC_MAPPING,
+    hvac_mapping=TB30KL1_HVAC_MAPPING,
     cookie_required=True,
     referer_template=(
         "https://app.psmartcloud.com/ca/cn/0820/{referer_model_path}/index.html"
