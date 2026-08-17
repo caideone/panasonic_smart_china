@@ -47,6 +47,10 @@ OPTION_TIMER_30_MIN = "30分钟"
 OPTION_TIMER_1_HOUR = "1小时"
 OPTION_TIMER_3_HOUR = "3小时"
 OPTION_TIMER_6_HOUR = "6小时"
+OPTION_WIND_DIRECTION_FIXED = "固定"
+OPTION_WIND_DIRECTION_AUTO = "自动"
+OPTION_WIND_KIND_FOCUSED = "集中"
+OPTION_WIND_KIND_DIFFUSE = "扩散"
 
 MODE_BY_OPTION = {
     OPTION_OFF: 32,
@@ -133,6 +137,18 @@ TB30KL1_LIGHT_BY_OPTION = {
 OPTION_BY_TB30KL1_LIGHT = {
     value: key for key, value in TB30KL1_LIGHT_BY_OPTION.items()
 }
+WIND_DIRECTION_BY_OPTION = {
+    OPTION_WIND_DIRECTION_FIXED: 0,
+    OPTION_WIND_DIRECTION_AUTO: 6,
+}
+OPTION_BY_WIND_DIRECTION = {
+    value: key for key, value in WIND_DIRECTION_BY_OPTION.items()
+}
+WIND_KIND_BY_OPTION = {
+    OPTION_WIND_KIND_FOCUSED: 1,
+    OPTION_WIND_KIND_DIFFUSE: 2,
+}
+OPTION_BY_WIND_KIND = {value: key for key, value in WIND_KIND_BY_OPTION.items()}
 
 TIMER_BY_OPTION = {
     OPTION_TIMER_CONTINUOUS: 35,
@@ -145,6 +161,8 @@ TIMER_BY_OPTION = {
 OPTION_BY_TIMER = {value: key for key, value in TIMER_BY_OPTION.items()}
 DEFAULT_TIMER_VALUE = TIMER_BY_OPTION[OPTION_TIMER_30_MIN]
 LAST_TIMER_BY_DEVICE: dict[str, int] = {}
+LAST_WIND_DIRECTION_BY_DEVICE: dict[str, int] = {}
+LAST_WIND_KIND_BY_DEVICE: dict[str, int] = {}
 DIY_NEXT_STEP_5_MODELS = {"RB20VD1"}
 TIMER_BEFORE_MODE_MODELS = {"TB30KL1"}
 TB30KL1_PROFILE_ID = "bathroom_heater_0820_tb30kl1"
@@ -186,6 +204,17 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 PanasonicBathroomHeaterTimerSelect(entity_config, name, profile, client),
             )
         )
+        if _is_tb30kl1(profile.profile_id, entity_config.get(CONF_DEVICE_MODEL)):
+            entities.extend(
+                (
+                    PanasonicBathroomHeaterWindDirectionSelect(
+                        entity_config, name, profile, client
+                    ),
+                    PanasonicBathroomHeaterWindKindSelect(
+                        entity_config, name, profile, client
+                    ),
+                )
+            )
 
     async_add_entities(entities, update_before_add=True)
 
@@ -265,7 +294,13 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
             self._device_id,
             DEFAULT_TIMER_VALUE,
         )
-        changes = _mode_changes_for_option(self._profile_id, self._model, option, timer)
+        changes = _mode_changes_for_option(
+            self._profile_id,
+            self._model,
+            self._device_id,
+            option,
+            timer,
+        )
         params = _build_bathroom_heater_payload(self._model, changes)
         self._attr_current_option = option
         self._attr_available = True
@@ -300,7 +335,13 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
                 )
                 params = _build_bathroom_heater_payload(
                     self._model,
-                    _mode_changes_for_option(self._profile_id, self._model, option, timer),
+                    _mode_changes_for_option(
+                        self._profile_id,
+                        self._model,
+                        self._device_id,
+                        option,
+                        timer,
+                    ),
                 )
 
             await self._api.set_device_status(
@@ -511,10 +552,241 @@ class PanasonicBathroomHeaterTimerSelect(SelectEntity):
             _as_int(status.get("runningMode"), 32),
         )
         changes = {"runningMode": running_mode, "timeSet": TIMER_BY_OPTION[option]}
-        changes.update(_extra_changes_for_mode(self._profile_id, self._model, running_mode))
+        changes.update(
+            _extra_changes_for_mode(
+                self._profile_id,
+                self._model,
+                self._device_id,
+                running_mode,
+            )
+        )
         params = _build_bathroom_heater_payload(self._model, changes)
         self._attr_current_option = option
         LAST_TIMER_BY_DEVICE[self._device_id] = TIMER_BY_OPTION[option]
+        self._attr_available = True
+        self.async_write_ha_state()
+        try:
+            await self._api.set_device_status(
+                self._profile,
+                self._usr_id,
+                self._device_id,
+                self._token,
+                params,
+                self._model,
+            )
+        except PanasonicApiAuthError as err:
+            self._attr_available = False
+            _LOGGER.error("Panasonic session expired while setting %s: %s", self._device_id, err)
+            raise ConfigEntryAuthFailed("Panasonic Smart China session expired") from err
+        except PanasonicApiError as err:
+            _LOGGER.error("Set failed for %s: %s", self._device_id, err)
+            return
+
+        self.async_write_ha_state()
+
+
+class PanasonicBathroomHeaterWindDirectionSelect(SelectEntity):
+    """Wind direction select for Panasonic TB30KL1 bathroom heater devices."""
+
+    _attr_options = list(WIND_DIRECTION_BY_OPTION)
+
+    def __init__(self, config, name, profile, client):
+        self._usr_id = config[CONF_USR_ID]
+        self._device_id = config[CONF_DEVICE_ID]
+        try:
+            self._token = generate_device_token(self._device_id)
+        except DeviceTokenError as err:
+            _LOGGER.warning(
+                "Using stored token for %s because token regeneration failed: %s",
+                self._device_id,
+                err,
+            )
+            self._token = config[CONF_TOKEN]
+        self._model = config.get(CONF_DEVICE_MODEL) or config.get(CONF_CONTROLLER_MODEL)
+        self._profile = profile
+        self._profile_id = profile.profile_id
+        self._api = client
+        self._attr_name = f"{name} 风向"
+        self._attr_unique_id = f"panasonic_smart_china_{self._device_id}_wind_direction"
+        self._attr_current_option = OPTION_WIND_DIRECTION_FIXED
+        self._attr_available = False
+
+    @property
+    def device_info(self):
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._attr_name.removesuffix(" 风向"),
+            manufacturer="Panasonic",
+            model=self._model,
+        )
+
+    async def async_update(self):
+        try:
+            status = await self._api.get_device_status(
+                self._profile,
+                self._usr_id,
+                self._device_id,
+                self._token,
+                self._model,
+            )
+        except PanasonicApiAuthError as err:
+            self._attr_available = False
+            _LOGGER.error("Panasonic session expired for %s: %s", self._device_id, err)
+            raise ConfigEntryAuthFailed("Panasonic Smart China session expired") from err
+        except PanasonicApiError as err:
+            self._attr_available = False
+            _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
+            return
+
+        direction = _as_int(status.get("windDirectionSet"), 0)
+        if direction in OPTION_BY_WIND_DIRECTION:
+            LAST_WIND_DIRECTION_BY_DEVICE[self._device_id] = direction
+        self._attr_current_option = OPTION_BY_WIND_DIRECTION.get(
+            direction,
+            OPTION_WIND_DIRECTION_FIXED,
+        )
+        self._attr_available = True
+
+    async def async_select_option(self, option: str):
+        if option not in WIND_DIRECTION_BY_OPTION:
+            _LOGGER.warning("Unsupported bathroom heater wind direction %s for %s", option, self._device_id)
+            return
+
+        try:
+            status = await self._api.get_device_status(
+                self._profile,
+                self._usr_id,
+                self._device_id,
+                self._token,
+                self._model,
+            )
+        except PanasonicApiAuthError as err:
+            self._attr_available = False
+            _LOGGER.error("Panasonic session expired for %s: %s", self._device_id, err)
+            raise ConfigEntryAuthFailed("Panasonic Smart China session expired") from err
+        except PanasonicApiError as err:
+            self._attr_available = False
+            _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
+            return
+
+        direction = WIND_DIRECTION_BY_OPTION[option]
+        changes = _current_tb30kl1_wind_payload(status)
+        changes["windDirectionSet"] = direction
+        params = _build_bathroom_heater_payload(self._model, changes)
+        LAST_WIND_DIRECTION_BY_DEVICE[self._device_id] = direction
+        self._attr_current_option = option
+        self._attr_available = True
+        self.async_write_ha_state()
+        try:
+            await self._api.set_device_status(
+                self._profile,
+                self._usr_id,
+                self._device_id,
+                self._token,
+                params,
+                self._model,
+            )
+        except PanasonicApiAuthError as err:
+            self._attr_available = False
+            _LOGGER.error("Panasonic session expired while setting %s: %s", self._device_id, err)
+            raise ConfigEntryAuthFailed("Panasonic Smart China session expired") from err
+        except PanasonicApiError as err:
+            _LOGGER.error("Set failed for %s: %s", self._device_id, err)
+            return
+
+        self.async_write_ha_state()
+
+
+class PanasonicBathroomHeaterWindKindSelect(SelectEntity):
+    """Wind kind select for Panasonic TB30KL1 bathroom heater devices."""
+
+    _attr_options = list(WIND_KIND_BY_OPTION)
+
+    def __init__(self, config, name, profile, client):
+        self._usr_id = config[CONF_USR_ID]
+        self._device_id = config[CONF_DEVICE_ID]
+        try:
+            self._token = generate_device_token(self._device_id)
+        except DeviceTokenError as err:
+            _LOGGER.warning(
+                "Using stored token for %s because token regeneration failed: %s",
+                self._device_id,
+                err,
+            )
+            self._token = config[CONF_TOKEN]
+        self._model = config.get(CONF_DEVICE_MODEL) or config.get(CONF_CONTROLLER_MODEL)
+        self._profile = profile
+        self._profile_id = profile.profile_id
+        self._api = client
+        self._attr_name = f"{name} 风种"
+        self._attr_unique_id = f"panasonic_smart_china_{self._device_id}_wind_kind"
+        self._attr_current_option = OPTION_WIND_KIND_FOCUSED
+        self._attr_available = False
+
+    @property
+    def device_info(self):
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._attr_name.removesuffix(" 风种"),
+            manufacturer="Panasonic",
+            model=self._model,
+        )
+
+    async def async_update(self):
+        try:
+            status = await self._api.get_device_status(
+                self._profile,
+                self._usr_id,
+                self._device_id,
+                self._token,
+                self._model,
+            )
+        except PanasonicApiAuthError as err:
+            self._attr_available = False
+            _LOGGER.error("Panasonic session expired for %s: %s", self._device_id, err)
+            raise ConfigEntryAuthFailed("Panasonic Smart China session expired") from err
+        except PanasonicApiError as err:
+            self._attr_available = False
+            _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
+            return
+
+        kind = _as_int(status.get("windKindSet"), 1)
+        if kind in OPTION_BY_WIND_KIND:
+            LAST_WIND_KIND_BY_DEVICE[self._device_id] = kind
+        self._attr_current_option = OPTION_BY_WIND_KIND.get(
+            kind,
+            OPTION_WIND_KIND_FOCUSED,
+        )
+        self._attr_available = True
+
+    async def async_select_option(self, option: str):
+        if option not in WIND_KIND_BY_OPTION:
+            _LOGGER.warning("Unsupported bathroom heater wind kind %s for %s", option, self._device_id)
+            return
+
+        try:
+            status = await self._api.get_device_status(
+                self._profile,
+                self._usr_id,
+                self._device_id,
+                self._token,
+                self._model,
+            )
+        except PanasonicApiAuthError as err:
+            self._attr_available = False
+            _LOGGER.error("Panasonic session expired for %s: %s", self._device_id, err)
+            raise ConfigEntryAuthFailed("Panasonic Smart China session expired") from err
+        except PanasonicApiError as err:
+            self._attr_available = False
+            _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
+            return
+
+        kind = WIND_KIND_BY_OPTION[option]
+        changes = _current_tb30kl1_wind_payload(status)
+        changes["windKindSet"] = kind
+        params = _build_bathroom_heater_payload(self._model, changes)
+        LAST_WIND_KIND_BY_DEVICE[self._device_id] = kind
+        self._attr_current_option = option
         self._attr_available = True
         self.async_write_ha_state()
         try:
@@ -575,7 +847,7 @@ def _mode_for_option(profile_id, model, option):
     )
 
 
-def _mode_changes_for_option(profile_id, model, option, timer):
+def _mode_changes_for_option(profile_id, model, device_id, option, timer):
     running_mode = _mode_for_option(profile_id, model, option)
     changes = {"runningMode": running_mode}
     if option != OPTION_OFF:
@@ -583,14 +855,25 @@ def _mode_changes_for_option(profile_id, model, option, timer):
     changes.update(
         EXTRA_CHANGES_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(option, {})
     )
+    if _is_tb30kl1(profile_id, model) and option != OPTION_OFF:
+        if device_id in LAST_WIND_DIRECTION_BY_DEVICE:
+            changes["windDirectionSet"] = LAST_WIND_DIRECTION_BY_DEVICE[device_id]
+        if device_id in LAST_WIND_KIND_BY_DEVICE:
+            changes["windKindSet"] = LAST_WIND_KIND_BY_DEVICE[device_id]
     return changes
 
 
-def _extra_changes_for_mode(profile_id, model, mode):
+def _extra_changes_for_mode(profile_id, model, device_id, mode):
     option = _option_for_mode(profile_id, model, mode)
-    return dict(
+    changes = dict(
         EXTRA_CHANGES_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(option, {})
     )
+    if _is_tb30kl1(profile_id, model) and option != OPTION_OFF:
+        if device_id in LAST_WIND_DIRECTION_BY_DEVICE:
+            changes["windDirectionSet"] = LAST_WIND_DIRECTION_BY_DEVICE[device_id]
+        if device_id in LAST_WIND_KIND_BY_DEVICE:
+            changes["windKindSet"] = LAST_WIND_KIND_BY_DEVICE[device_id]
+    return changes
 
 
 def _option_for_mode(profile_id, model, mode):
@@ -627,6 +910,15 @@ def _writable_running_mode_for_device(profile_id, model, mode):
     if _is_tb30kl1(profile_id, model):
         return mode
     return _writable_running_mode(mode)
+
+
+def _current_tb30kl1_wind_payload(status):
+    return {
+        "runningMode": _as_int(status.get("runningMode"), 0),
+        "timeSet": _as_int(status.get("timeSet"), DEFAULT_TIMER_VALUE),
+        "windDirectionSet": _as_int(status.get("windDirectionSet"), 0),
+        "windKindSet": _as_int(status.get("windKindSet"), 1),
+    }
 
 
 def _writable_running_mode(mode):
