@@ -59,6 +59,14 @@ MODE_BY_MODEL_AND_OPTION = {
         OPTION_FAN: 6,
     },
 }
+EXTRA_CHANGES_BY_MODEL_AND_OPTION = {
+    "TB30KL1": {
+        OPTION_FAN: {
+            "windDirectionSet": 0,
+            "windKindSet": 1,
+        },
+    },
+}
 OPTION_BY_MODEL_AND_MODE = {
     model: {mode: option for option, mode in mode_by_option.items()}
     for model, mode_by_option in MODE_BY_MODEL_AND_OPTION.items()
@@ -218,9 +226,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
             self._device_id,
             DEFAULT_TIMER_VALUE,
         )
-        changes = {"runningMode": running_mode}
-        if running_mode != 32:
-            changes["timeSet"] = timer
+        changes = _mode_changes_for_option(self._model, option, timer)
         params = _build_bathroom_heater_payload(self._model, changes)
         self._attr_current_option = option
         self._attr_available = True
@@ -253,7 +259,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
                 )
                 params = _build_bathroom_heater_payload(
                     self._model,
-                    {"runningMode": running_mode},
+                    _mode_changes_for_option(self._model, option, timer),
                 )
 
             await self._api.set_device_status(
@@ -452,13 +458,9 @@ class PanasonicBathroomHeaterTimerSelect(SelectEntity):
             return
 
         running_mode = _writable_running_mode(_as_int(status.get("runningMode"), 32))
-        params = _build_bathroom_heater_payload(
-            self._model,
-            {
-                "runningMode": running_mode,
-                "timeSet": TIMER_BY_OPTION[option],
-            },
-        )
+        changes = {"runningMode": running_mode, "timeSet": TIMER_BY_OPTION[option]}
+        changes.update(_extra_changes_for_mode(self._model, running_mode))
+        params = _build_bathroom_heater_payload(self._model, changes)
         self._attr_current_option = option
         LAST_TIMER_BY_DEVICE[self._device_id] = TIMER_BY_OPTION[option]
         self._attr_available = True
@@ -512,6 +514,24 @@ def _mode_for_option(model, option):
     return MODE_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(
         option,
         MODE_BY_OPTION[option],
+    )
+
+
+def _mode_changes_for_option(model, option, timer):
+    running_mode = _mode_for_option(model, option)
+    changes = {"runningMode": running_mode}
+    if running_mode != 32:
+        changes["timeSet"] = timer
+    changes.update(
+        EXTRA_CHANGES_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(option, {})
+    )
+    return changes
+
+
+def _extra_changes_for_mode(model, mode):
+    option = _option_for_mode(model, mode)
+    return dict(
+        EXTRA_CHANGES_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(option, {})
     )
 
 
