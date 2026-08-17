@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import logging
 from typing import Any
 
 import async_timeout
@@ -16,9 +17,16 @@ BASE_URL = "https://app.psmartcloud.com/App"
 URL_LOGIN = f"{BASE_URL}/UsrLogin"
 URL_GET_DEV = f"{BASE_URL}/UsrGetBindDevInfo"
 URL_GET_TOKEN = f"{BASE_URL}/UsrGetToken"
+URL_FAMILY_ENDPOINTS = (
+    f"{BASE_URL}/UsrGetFamilyList",
+    f"{BASE_URL}/UsrGetFamilyInfo",
+    f"{BASE_URL}/UsrGetFamily",
+    f"{BASE_URL}/UsrGetHomeList",
+)
 
 AUTH_ERROR_CODES = {"3003", "3004", "403", "4102"}
 SUCCESS_ERROR_CODES = {None, "", 0, "0", "0000"}
+_LOGGER = logging.getLogger(__name__)
 
 
 class PanasonicApiError(Exception):
@@ -103,6 +111,8 @@ class PanasonicApiClient:
         family_id = results["familyId"]
         real_family_id = results["realFamilyId"]
         families = _extract_family_infos(results, family_id, real_family_id)
+        if len(families) <= 1:
+            families = await self.get_families(usr_id, family_id, real_family_id)
         family_name = _family_name_for(families, family_id, real_family_id)
 
         self.ssid = ssid
@@ -116,6 +126,50 @@ class PanasonicApiClient:
             families=families,
             devices=devices,
         )
+
+    async def get_families(
+        self,
+        usr_id: str,
+        family_id: str,
+        real_family_id: str,
+    ) -> tuple[FamilyInfo, ...]:
+        """Return account families when Panasonic exposes a family list endpoint."""
+        fallback = _extract_family_infos({}, family_id, real_family_id)
+        payloads = (
+            {"params": {"usrId": usr_id}},
+            {"params": {"usrId": usr_id, "familyId": family_id}},
+            {
+                "params": {
+                    "usrId": usr_id,
+                    "familyId": family_id,
+                    "realFamilyId": real_family_id,
+                }
+            },
+        )
+
+        for url in URL_FAMILY_ENDPOINTS:
+            for index, payload in enumerate(payloads, start=4):
+                request_payload = {"id": index, "uiVersion": 4.0, **payload}
+                try:
+                    res = await self._post(
+                        url,
+                        request_payload,
+                        headers=self._app_headers(include_cookie=True),
+                        require_results=False,
+                    )
+                except PanasonicApiAuthError:
+                    raise
+                except PanasonicApiError as err:
+                    _LOGGER.debug("Family list candidate failed for %s: %s", url, err)
+                    continue
+
+                families = _extract_family_infos(res, family_id, real_family_id)
+                if len(families) > 1:
+                    _LOGGER.debug("Family list loaded from %s", url)
+                    return families
+                _LOGGER.debug("Family list candidate returned no extra families from %s", url)
+
+        return fallback
 
     async def get_devices(
         self, usr_id: str, family_id: str, real_family_id: str
@@ -348,8 +402,19 @@ def _extract_family_infos(
     seen: set[tuple[str, str]] = set()
 
     def add_family(candidate: dict[str, Any]) -> None:
-        family_id = candidate.get("familyId") or candidate.get("id")
-        real_family_id = candidate.get("realFamilyId") or candidate.get("realId")
+        family_id = (
+            candidate.get("familyId")
+            or candidate.get("homeId")
+            or candidate.get("houseId")
+            or candidate.get("id")
+        )
+        real_family_id = (
+            candidate.get("realFamilyId")
+            or candidate.get("realHomeId")
+            or candidate.get("realHouseId")
+            or candidate.get("realId")
+            or family_id
+        )
         if not family_id or not real_family_id:
             return
 
@@ -387,7 +452,11 @@ def _extract_family_infos(
         "realFamilyList",
         "usrFamilyList",
         "homeList",
+        "homes",
         "houseList",
+        "list",
+        "data",
+        "results",
     ):
         walk(results.get(key))
 
