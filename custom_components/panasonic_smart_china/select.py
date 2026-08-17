@@ -64,6 +64,7 @@ MODE_BY_MODEL_AND_OPTION = {
 }
 TB30KL1_MODE_BY_OPTION = {
     OPTION_OFF: 0,
+    OPTION_HEAT: 4,
     OPTION_FAN: 6,
     OPTION_COOL_DRY: 8,
     OPTION_HEAT_DRY: 10,
@@ -71,6 +72,10 @@ TB30KL1_MODE_BY_OPTION = {
 EXTRA_CHANGES_BY_MODEL_AND_OPTION = {
     "TB30KL1": {
         OPTION_FAN: {
+            "windDirectionSet": 0,
+            "windKindSet": 1,
+        },
+        OPTION_HEAT: {
             "windDirectionSet": 0,
             "windKindSet": 1,
         },

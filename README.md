@@ -1,7 +1,7 @@
 # Panasonic Smart China for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![version](https://img.shields.io/badge/version-2.5.9-blue.svg)]()
+[![version](https://img.shields.io/badge/version-2.5.10-blue.svg)]()
 [![license](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 这是一个用于 Home Assistant 的松下中国区智能家电自定义集成，目标是逐步维护成面向“松下智能家电”中国区设备的核心 HA 集成仓库。
