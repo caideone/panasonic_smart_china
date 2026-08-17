@@ -54,6 +54,15 @@ MODE_BY_OPTION = {
     OPTION_HEAT_DRY: 42,
 }
 OPTION_BY_MODE = {value: key for key, value in MODE_BY_OPTION.items()}
+MODE_BY_MODEL_AND_OPTION = {
+    "TB30KL1": {
+        OPTION_FAN: 6,
+    },
+}
+OPTION_BY_MODEL_AND_MODE = {
+    model: {mode: option for option, mode in mode_by_option.items()}
+    for model, mode_by_option in MODE_BY_MODEL_AND_OPTION.items()
+}
 WRITABLE_MODE_BY_STATUS_MODE = {
     0x00: 32,
     0x20: 32,
@@ -196,7 +205,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
             return
 
         mode = _writable_running_mode(_as_int(status.get("runningMode"), 32))
-        self._attr_current_option = OPTION_BY_MODE.get(mode, OPTION_OFF)
+        self._attr_current_option = _option_for_mode(self._model, mode)
         self._attr_available = True
 
     async def async_select_option(self, option: str):
@@ -204,7 +213,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
             _LOGGER.warning("Unsupported bathroom heater mode %s for %s", option, self._device_id)
             return
 
-        running_mode = MODE_BY_OPTION[option]
+        running_mode = _mode_for_option(self._model, option)
         timer = LAST_TIMER_BY_DEVICE.get(
             self._device_id,
             DEFAULT_TIMER_VALUE,
@@ -497,6 +506,20 @@ def _build_bathroom_heater_payload(model, changes):
 
 def _model_upper(model):
     return model.upper() if model else ""
+
+
+def _mode_for_option(model, option):
+    return MODE_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(
+        option,
+        MODE_BY_OPTION[option],
+    )
+
+
+def _option_for_mode(model, mode):
+    return OPTION_BY_MODEL_AND_MODE.get(_model_upper(model), {}).get(
+        mode,
+        OPTION_BY_MODE.get(mode, OPTION_OFF),
+    )
 
 
 def _writable_running_mode(mode):
