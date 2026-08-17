@@ -160,15 +160,20 @@ class PanasonicApiClient:
                 except PanasonicApiAuthError:
                     raise
                 except PanasonicApiError as err:
-                    _LOGGER.debug("Family list candidate failed for %s: %s", url, err)
+                    _LOGGER.info("Family list candidate failed for %s: %s", url, err)
                     continue
 
                 families = _extract_family_infos(res, family_id, real_family_id)
                 if len(families) > 1:
-                    _LOGGER.debug("Family list loaded from %s", url)
+                    _LOGGER.info("Family list loaded from %s", url)
                     return families
-                _LOGGER.debug("Family list candidate returned no extra families from %s", url)
+                _LOGGER.info("Family list candidate returned no extra families from %s", url)
 
+        _LOGGER.warning(
+            "No Panasonic family list endpoint returned extra families; "
+            "only default family %s is available",
+            family_id,
+        )
         return fallback
 
     async def get_devices(
