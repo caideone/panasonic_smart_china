@@ -39,8 +39,6 @@ OPTION_HEAT_DRY = "热干燥"
 OPTION_LIGHT_OFF = "关闭"
 OPTION_LIGHT_WARM = "暖光"
 OPTION_LIGHT_COOL = "冷光"
-OPTION_LIGHT_ON = "照明开"
-OPTION_LIGHT_SIMPLE_OFF = "照明关"
 OPTION_TIMER_CONTINUOUS = "连续"
 OPTION_TIMER_15_MIN = "15分钟"
 OPTION_TIMER_30_MIN = "30分钟"
@@ -58,7 +56,6 @@ MODE_BY_OPTION = {
 OPTION_BY_MODE = {value: key for key, value in MODE_BY_OPTION.items()}
 MODE_BY_MODEL_AND_OPTION = {
     "TB30KL1": {
-        OPTION_OFF: 0,
         OPTION_FAN: 6,
     },
 }
@@ -107,16 +104,6 @@ LIGHT_BY_OPTION = {
     OPTION_LIGHT_COOL: 2,
 }
 OPTION_BY_LIGHT = {value: key for key, value in LIGHT_BY_OPTION.items()}
-LIGHT_BY_MODEL_AND_OPTION = {
-    "TB30KL1": {
-        OPTION_LIGHT_SIMPLE_OFF: 0,
-        OPTION_LIGHT_ON: 2,
-    },
-}
-OPTION_BY_MODEL_AND_LIGHT = {
-    model: {light: option for option, light in light_by_option.items()}
-    for model, light_by_option in LIGHT_BY_MODEL_AND_OPTION.items()
-}
 
 TIMER_BY_OPTION = {
     OPTION_TIMER_CONTINUOUS: 35,
@@ -225,10 +212,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
             _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
             return
 
-        mode = _writable_running_mode_for_model(
-            self._model,
-            _as_int(status.get("runningMode"), 32),
-        )
+        mode = _writable_running_mode(_as_int(status.get("runningMode"), 32))
         self._attr_current_option = _option_for_mode(self._model, mode)
         self._attr_available = True
 
@@ -248,7 +232,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
         self._attr_available = True
         self.async_write_ha_state()
         try:
-            if option != OPTION_OFF and _model_upper(self._model) in TIMER_BEFORE_MODE_MODELS:
+            if running_mode != 32 and _model_upper(self._model) in TIMER_BEFORE_MODE_MODELS:
                 status = await self._api.get_device_status(
                     self._profile,
                     self._usr_id,
@@ -256,8 +240,7 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
                     self._token,
                     self._model,
                 )
-                current_mode = _writable_running_mode_for_model(
-                    self._model,
+                current_mode = _writable_running_mode(
                     _as_int(status.get("runningMode"), 32)
                 )
                 await self._api.set_device_status(
@@ -300,6 +283,8 @@ class PanasonicBathroomHeaterModeSelect(SelectEntity):
 class PanasonicBathroomHeaterLightSelect(SelectEntity):
     """Light select for Panasonic 0820 bathroom heater devices."""
 
+    _attr_options = list(LIGHT_BY_OPTION)
+
     def __init__(self, config, name, profile, client):
         self._usr_id = config[CONF_USR_ID]
         self._device_id = config[CONF_DEVICE_ID]
@@ -317,8 +302,7 @@ class PanasonicBathroomHeaterLightSelect(SelectEntity):
         self._api = client
         self._attr_name = f"{name} 灯光"
         self._attr_unique_id = f"panasonic_smart_china_{self._device_id}_light"
-        self._attr_options = _light_options_for_model(self._model)
-        self._attr_current_option = self._attr_options[0]
+        self._attr_current_option = OPTION_LIGHT_OFF
         self._attr_available = False
 
     @property
@@ -349,11 +333,11 @@ class PanasonicBathroomHeaterLightSelect(SelectEntity):
             return
 
         light = _as_int(status.get("lightSet"), 0)
-        self._attr_current_option = _option_for_light(self._model, light)
+        self._attr_current_option = OPTION_BY_LIGHT.get(light, OPTION_LIGHT_OFF)
         self._attr_available = True
 
     async def async_select_option(self, option: str):
-        if option not in _light_options_for_model(self._model):
+        if option not in LIGHT_BY_OPTION:
             _LOGGER.warning("Unsupported bathroom heater light %s for %s", option, self._device_id)
             return
 
@@ -361,7 +345,7 @@ class PanasonicBathroomHeaterLightSelect(SelectEntity):
             self._model,
             {
                 "runningMode": 255,
-                "lightSet": _light_for_option(self._model, option),
+                "lightSet": LIGHT_BY_OPTION[option],
             },
         )
         self._attr_current_option = option
@@ -473,10 +457,7 @@ class PanasonicBathroomHeaterTimerSelect(SelectEntity):
             _LOGGER.warning("Fetch status failed for %s: %s", self._device_id, err)
             return
 
-        running_mode = _writable_running_mode_for_model(
-            self._model,
-            _as_int(status.get("runningMode"), 32),
-        )
+        running_mode = _writable_running_mode(_as_int(status.get("runningMode"), 32))
         changes = {"runningMode": running_mode, "timeSet": TIMER_BY_OPTION[option]}
         changes.update(_extra_changes_for_mode(self._model, running_mode))
         params = _build_bathroom_heater_payload(self._model, changes)
@@ -539,7 +520,7 @@ def _mode_for_option(model, option):
 def _mode_changes_for_option(model, option, timer):
     running_mode = _mode_for_option(model, option)
     changes = {"runningMode": running_mode}
-    if option != OPTION_OFF:
+    if running_mode != 32:
         changes["timeSet"] = timer
     changes.update(
         EXTRA_CHANGES_BY_MODEL_AND_OPTION.get(_model_upper(model), {}).get(option, {})
@@ -559,30 +540,6 @@ def _option_for_mode(model, mode):
         mode,
         OPTION_BY_MODE.get(mode, OPTION_OFF),
     )
-
-
-def _light_options_for_model(model):
-    return list(LIGHT_BY_MODEL_AND_OPTION.get(_model_upper(model), LIGHT_BY_OPTION))
-
-
-def _light_for_option(model, option):
-    model_light_by_option = LIGHT_BY_MODEL_AND_OPTION.get(_model_upper(model), {})
-    if option in model_light_by_option:
-        return model_light_by_option[option]
-    return LIGHT_BY_OPTION[option]
-
-
-def _option_for_light(model, light):
-    return OPTION_BY_MODEL_AND_LIGHT.get(_model_upper(model), {}).get(
-        light,
-        OPTION_BY_LIGHT.get(light, OPTION_LIGHT_OFF),
-    )
-
-
-def _writable_running_mode_for_model(model, mode):
-    if mode in OPTION_BY_MODEL_AND_MODE.get(_model_upper(model), {}):
-        return mode
-    return _writable_running_mode(mode)
 
 
 def _writable_running_mode(mode):
